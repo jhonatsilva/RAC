@@ -1,0 +1,4 @@
+SHEET_NAME_BY_YEAR = {
+    2024: "CTBA_2024",
+    2025: "CTBA_2025",
+}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="form-card">
+    <h2>Escolha os parâmetros da análise</h2>
+
+    <!-- Formulário principal -->
+    <form method="POST" action="{{ url_for('analyze') }}" enctype="multipart/form-data" id="analysis-form">
+
+        <!-- Upload do arquivo -->
+        <div class="form-group">
+            <label for="file">Arquivo (.xlsx)</label>
+            <input type="file" name="file" id="file" accept=".xlsx" required>
+        </div>
+
+        <!-- Selecionar ano -->
+        <div class="form-group">
+            <label for="year">Ano</label>
+            <select id="year" name="year" required>
+                <option value="">Selecione</option>
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+            </select>
+        </div>
+
+        <!-- Tipo de análise -->
+        <div class="form-group">
+            <label for="analysis_key">Tipo de análise</label>
+            <select id="analysis_key" name="analysis_key" required>
+                <option value="">Selecione</option>
+                {% for opt in analysis_options %}
+                <option value="{{ opt.key }}" data-params="{{ ','.join(opt.params) }}">{{ opt.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Campos dinâmicos (preenchidos automaticamente via JS) -->
+        <div class="param hidden" data-param="crime">
+            <label for="crime">Crime</label>
+            <select id="crime" name="crime"></select>
+        </div>
+
+        <div class="param hidden" data-param="bairro">
+            <label for="bairro">Bairro</label>
+            <select id="bairro" name="bairro"></select>
+        </div>
+
+        <div class="param hidden" data-param="semestre">
+            <label for="semestre">Semestre</label>
+            <select id="semestre" name="semestre"></select>
+        </div>
+
+        <div class="param hidden" data-param="periodo">
+            <label for="periodo">Período</label>
+            <select id="periodo" name="periodo"></select>
+        </div>
+
+        <!-- Botão de ação -->
+        <div class="form-actions">
+            <button type="submit" id="btn-submit">Gerar gráfico</button>
+        </div>
+    </form>
+
+    <div id="loading" class="loading hidden">
+        <p>Carregando opções, aguarde...</p>
+    </div>
+</section>
+{% endblock %}

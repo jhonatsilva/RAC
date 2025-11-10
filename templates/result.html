@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="result-card">
+    <!-- Cabeçalho -->
+    <div class="result-header">
+        <button class="btn-back" onclick="window.history.back()">← Voltar</button>
+        <h2>{{ meta.title }}</h2>
+    </div>
+
+    <!-- Gráfico -->
+    <div id="chart-container" class="chart-container"></div>
+
+    <!-- Script para renderizar o gráfico Plotly -->
+    <script type="application/javascript">
+        document.addEventListener("DOMContentLoaded", function () {
+            // Transforma o JSON vindo do Flask em objeto JS válido
+            const chartData = JSON.parse('{{ chart_json | tojson | safe }}');
+
+            if (chartData && chartData.data) {
+                Plotly.newPlot('chart-container', chartData.data, chartData.layout, { responsive: true });
+            } else {
+                const msg = document.createElement("p");
+                msg.textContent = "Nenhum dado encontrado para exibir o gráfico.";
+                msg.style.color = "#6b7280";
+                msg.style.textAlign = "center";
+                msg.style.marginTop = "40px";
+                document.getElementById("chart-container").appendChild(msg);
+            }
+        });
+    </script>
+</section>
+{% endblock %}

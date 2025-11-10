@@ -1,0 +1,16 @@
+ANALYSIS_OPTIONS = [
+    {"key": "ocorrencias_filtro_crime", "label": "Total de ocorrências por crime", "params": ["crime"]},
+    {"key": "ranking_bairros_crime", "label": "Ranking de bairros por crime", "params": ["crime"]},
+    {"key": "crimes_dia_crime_bairro", "label": "Crimes por dia da semana (crime + bairro)", "params": ["crime", "bairro"]},
+    {"key": "periodo_crime_bairro", "label": "Crimes por período (crime + bairro)", "params": ["crime", "bairro"]},
+    {"key": "crimes_perigosos_semestre", "label": "Crimes perigosos por semestre", "params": ["semestre"]},
+    {"key": "crimes_moradias_semestre", "label": "Crimes contra moradias por semestre", "params": ["semestre"]},
+    {"key": "crimes_moradias_bairro", "label": "Crimes contra moradias por bairro", "params": ["bairro"]},
+    {"key": "periodo_moradias_bairro", "label": "Período de crimes em moradias por bairro", "params": ["bairro"]},
+    {"key": "dia_moradias_bairro", "label": "Dia da semana - crimes em moradias", "params": ["bairro"]},
+    {"key": "periodo_furtos_roubos_bairro", "label": "Período furtos/roubos por bairro", "params": ["bairro"]},
+    {"key": "dia_furtos_roubos_bairro", "label": "Dia furtos/roubos por bairro", "params": ["bairro"]},
+    {"key": "periodo_crime_bairro_resumo", "label": "Período principal por crime (bairro)", "params": ["bairro"]},
+    {"key": "crimes_perigosos_bairro_periodo", "label": "Crimes perigosos (bairro + período)", "params": ["bairro", "periodo"]},
+    {"key": "crime_comercial_bairro", "label": "Crimes em comércio (horário comercial)", "params": ["bairro"]},
+]

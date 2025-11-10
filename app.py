@@ -1,96 +1,106 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from werkzeug.utils import secure_filename
 import os
-import pandas as pd
+from flask import Flask, render_template, request, redirect, url_for, flash
+from werkzeug.utils import secure_filename
 
-from rac.data_loader import load_excel_for_year
+from rac.data_loader import get_filter_values, load_excel_for_year
 from rac.analysis_functions import run_analysis
 from rac.charts import build_chart
 from rac.choices import ANALYSIS_OPTIONS
 
-UPLOAD_FOLDER = "uploads"
+# ==============================
+# Configuração básica
+# ==============================
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 ALLOWED_EXTENSIONS = {"xlsx"}
 
 app = Flask(__name__)
-app.secret_key = "secret"
+app.secret_key = "segredo_rac_pmpr"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# Armazenamento temporário de dados carregados
-datasets = {}
 
 
-def allowed_file(filename: str):
+def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# ==============================
+# Rota inicial
+# ==============================
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", analysis_options=ANALYSIS_OPTIONS)
+    years, crimes, bairros = get_filter_values()
+    return render_template(
+        "index.html",
+        years=years,
+        crimes=crimes,
+        bairros=bairros,
+        analysis_options=ANALYSIS_OPTIONS,
+        error=None,
+    )
 
 
-@app.route("/load-options", methods=["POST"])
-def load_options():
-    """Retorna listas únicas de valores (crimes, bairros etc.) com base no arquivo e ano."""
-    file = request.files.get("file")
-    year = request.form.get("year")
-
-    if not file or not allowed_file(file.filename):
-        return jsonify({"error": "Arquivo inválido."}), 400
-
+# ==============================
+# Rota de análise
+# ==============================
+@app.route("/analyze", methods=["POST"])
+def analyze():
     try:
-        year = int(year)
+        file = request.files.get("file")
+        year = request.form.get("year")
+        analysis_key = request.form.get("analysis_key")
+
+        crime = (request.form.get("crime") or "").strip() or None
+        bairro = (request.form.get("bairro") or "").strip() or None
+        semestre = (request.form.get("semestre") or "").strip() or None
+        periodo = (request.form.get("periodo") or "").strip() or None
+
+        # Validações básicas
+        if not file or file.filename == "":
+            flash("Envie um arquivo .xlsx válido.")
+            return redirect(url_for("index"))
+
+        if not allowed_file(file.filename):
+            flash("Formato inválido. Envie um arquivo .xlsx.")
+            return redirect(url_for("index"))
+
+        if not year:
+            flash("Selecione o ano.")
+            return redirect(url_for("index"))
+
+        if not analysis_key or analysis_key not in ANALYSIS_OPTIONS:
+            flash("Selecione um tipo de análise válido.")
+            return redirect(url_for("index"))
+
+        # Salvar arquivo
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         file.save(filepath)
 
+        # Carregar base filtrada por ano
         df = load_excel_for_year(filepath, year)
-        datasets["df"] = df  # salva temporariamente
+        if df is None or df.empty:
+            raise ValueError("Nenhum dado encontrado para o ano selecionado.")
 
-        crimes = sorted(df["NATUREZA"].unique().tolist())
-        bairros = sorted(df["BAIRRO"].unique().tolist())
-        semestres = [1, 2]
-        periodos = ["MANHÃ", "TARDE", "NOITE"]
-
-        return jsonify({
-            "crimes": crimes,
-            "bairros": bairros,
-            "semestres": semestres,
-            "periodos": periodos
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/analyze", methods=["POST"])
-def analyze():
-    """Executa a análise e retorna o gráfico."""
-    df = datasets.get("df")
-    if df is None:
-        flash("Nenhum dataset carregado.")
-        return redirect(url_for("index"))
-
-    analysis_key = request.form.get("analysis_key")
-    crime = request.form.get("crime")
-    bairro = request.form.get("bairro")
-    semestre = request.form.get("semestre")
-    periodo = request.form.get("periodo")
-
-    try:
-        if semestre:
-            semestre = int(semestre)
+        # Rodar análise
         result_df, meta = run_analysis(
             analysis_key=analysis_key,
             df=df,
             crime=crime,
             bairro=bairro,
             semestre=semestre,
-            periodo=periodo
+            periodo=periodo,
         )
-        chart_json = build_chart(result_df, meta)
-        return render_template("result.html", chart_json=chart_json, meta=meta)
+
+        # Gerar gráfico
+        chart_data = build_chart(result_df, meta)
+
+        return render_template("result.html", chart_data=chart_data, meta=meta)
+
     except Exception as e:
-        flash(f"Erro ao gerar gráfico: {e}")
+        print(f"[ERRO] /analyze: {e}")
+        flash(f"Erro ao gerar análise: {e}")
         return redirect(url_for("index"))
 
 

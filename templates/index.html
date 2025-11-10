@@ -1,68 +1,91 @@
 {% extends "base.html" %}
-
 {% block content %}
-<section class="form-card">
+<div class="form-container">
+
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div class="alert">
+        {% for msg in messages %}
+        <p>{{ msg }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {% if error %}
+    <div class="alert">{{ error }}</div>
+    {% endif %}
+
     <h2>Escolha os parâmetros da análise</h2>
 
-    <!-- Formulário principal -->
-    <form method="POST" action="{{ url_for('analyze') }}" enctype="multipart/form-data" id="analysis-form">
+    <form id="analysisForm" action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
+        <!-- Arquivo -->
+        <label for="file">Arquivo (.xlsx)</label>
+        <input type="file" id="file" name="file" accept=".xlsx" required>
 
-        <!-- Upload do arquivo -->
-        <div class="form-group">
-            <label for="file">Arquivo (.xlsx)</label>
-            <input type="file" name="file" id="file" accept=".xlsx" required>
-        </div>
-
-        <!-- Selecionar ano -->
-        <div class="form-group">
-            <label for="year">Ano</label>
-            <select id="year" name="year" required>
-                <option value="">Selecione</option>
-                <option value="2024">2024</option>
-                <option value="2025">2025</option>
-            </select>
-        </div>
+        <!-- Ano -->
+        <label for="year">Ano</label>
+        <select id="year" name="year" required>
+            <option value="">Selecione</option>
+            {% for y in years %}
+            <option value="{{ y }}">{{ y }}</option>
+            {% endfor %}
+        </select>
 
         <!-- Tipo de análise -->
-        <div class="form-group">
-            <label for="analysis_key">Tipo de análise</label>
-            <select id="analysis_key" name="analysis_key" required>
-                <option value="">Selecione</option>
-                {% for opt in analysis_options %}
-                <option value="{{ opt.key }}" data-params="{{ ','.join(opt.params) }}">{{ opt.label }}</option>
+        <label for="analysis_key">Tipo de análise</label>
+        <select id="analysis_key" name="analysis_key" required>
+            <option value="">Selecione</option>
+            {% for key, opt in analysis_options.items() %}
+            <option value="{{ key }}">{{ opt.label }}</option>
+            {% endfor %}
+        </select>
+
+        <!-- Crime -->
+        <div class="param hidden" data-param="crime">
+            <label for="crime">Crime (deixe em branco para todos)</label>
+            <select id="crime" name="crime">
+                <option value="">Todos</option>
+                {% for c in crimes %}
+                <option value="{{ c }}">{{ c }}</option>
                 {% endfor %}
             </select>
         </div>
 
-        <!-- Campos dinâmicos (preenchidos automaticamente via JS) -->
-        <div class="param hidden" data-param="crime">
-            <label for="crime">Crime</label>
-            <select id="crime" name="crime"></select>
-        </div>
-
+        <!-- Bairro -->
         <div class="param hidden" data-param="bairro">
-            <label for="bairro">Bairro</label>
-            <select id="bairro" name="bairro"></select>
+            <label for="bairro">Bairro (deixe em branco para todos)</label>
+            <select id="bairro" name="bairro">
+                <option value="">Todos</option>
+                {% for b in bairros %}
+                <option value="{{ b }}">{{ b }}</option>
+                {% endfor %}
+            </select>
         </div>
 
+        <!-- Semestre -->
         <div class="param hidden" data-param="semestre">
             <label for="semestre">Semestre</label>
-            <select id="semestre" name="semestre"></select>
+            <select id="semestre" name="semestre">
+                <option value="">Selecione</option>
+                <option value="1">1º semestre</option>
+                <option value="2">2º semestre</option>
+            </select>
         </div>
 
+        <!-- Período -->
         <div class="param hidden" data-param="periodo">
-            <label for="periodo">Período</label>
-            <select id="periodo" name="periodo"></select>
+            <label for="periodo">Período do dia</label>
+            <select id="periodo" name="periodo">
+                <option value="">Selecione</option>
+                <option value="MANHÃ">Manhã</option>
+                <option value="TARDE">Tarde</option>
+                <option value="NOITE">Noite</option>
+                <option value="MADRUGADA">Madrugada</option>
+            </select>
         </div>
 
-        <!-- Botão de ação -->
-        <div class="form-actions">
-            <button type="submit" id="btn-submit">Gerar gráfico</button>
-        </div>
+        <button type="submit" class="btn-primary">Gerar gráfico</button>
     </form>
-
-    <div id="loading" class="loading hidden">
-        <p>Carregando opções, aguarde...</p>
-    </div>
-</section>
+</div>
 {% endblock %}

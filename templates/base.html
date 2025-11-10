@@ -1,32 +1,31 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
-  <meta charset="UTF-8">
-  <title>RAC - Raio-X das Ocorrências Criminais</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAC - Raio-X das Ocorrências Criminais</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
-  <header class="app-header">
-    <h1>RAC - Raio-X das Ocorrências Criminais</h1>
-  </header>
-
-  <main>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="flash">
-          {% for msg in messages %}
-            <p>{{ msg }}</p>
-          {% endfor %}
+    <header class="navbar">
+        <div class="nav-content">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Logo_PMPR_2.svg/963px-Logo_PMPR_2.svg.png"
+                class="logo" alt="PMPR">
+            <h1>RAC - Raio-X das Ocorrências Criminais</h1>
         </div>
-      {% endif %}
-    {% endwith %}
-    {% block content %}{% endblock %}
-  </main>
+    </header>
 
-  <footer>
-    <p>© 2025 RAC - Dados públicos de segurança</p>
-  </footer>
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        © 2025 Polícia Militar do Paraná - Dados públicos de segurança
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
+
 </html>

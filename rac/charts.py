@@ -1,41 +1,40 @@
 import plotly.graph_objs as go
-import numpy as np
+
 
 def build_chart(df, meta: dict):
-    """
-    Cria um gráfico Plotly e retorna um dicionário serializável.
-    Converte automaticamente arrays numpy em listas.
-    """
     x = meta.get("x")
     y = meta.get("y")
-    title = meta.get("title", "Gráfico de Análise")
+    title = meta.get("title", "Análise de Ocorrências")
     chart_type = meta.get("type", "bar")
 
-    # Garante que as colunas existem
     if x not in df.columns or y not in df.columns:
-        x = df.columns[0]
-        y = df.columns[1]
+        raise ValueError(f"Colunas inválidas para o gráfico: x={x}, y={y}")
 
-    # Converte arrays numpy -> listas (garantindo compatibilidade com JSON)
-    x_values = df[x].tolist() if isinstance(df[x].values, np.ndarray) else df[x]
-    y_values = df[y].tolist() if isinstance(df[y].values, np.ndarray) else df[y]
+    x_values = df[x].astype(str).tolist()
+    y_values = df[y].tolist()
 
-    # Cria o gráfico
+    color = "#FFD700"  # dourado PMPR
+
     if chart_type == "bar":
-        fig = go.Figure([go.Bar(x=x_values, y=y_values)])
-    elif chart_type == "line":
-        fig = go.Figure([go.Scatter(x=x_values, y=y_values, mode='lines+markers')])
+        trace = go.Bar(x=x_values, y=y_values, marker_color=color)
     else:
-        fig = go.Figure([go.Bar(x=x_values, y=y_values)])
+        trace = go.Scatter(x=x_values, y=y_values, mode="lines+markers", line=dict(color=color, width=3))
 
-    # Configura layout
+    fig = go.Figure(data=[trace])
+
     fig.update_layout(
-        title=title,
-        xaxis_title=x,
-        yaxis_title=y,
-        template="plotly_white",
+        title=dict(
+            text=title,
+            x=0.5,
+            font=dict(color="#FFD700", size=22, family="Arial Black"),
+        ),
+        xaxis=dict(title=x, color="white"),
+        yaxis=dict(title=y, color="white"),
+        template="plotly_dark",
+        plot_bgcolor="#1B4332",
+        paper_bgcolor="#1B4332",
+        font=dict(color="white", family="Segoe UI"),
         margin=dict(l=40, r=20, t=60, b=60),
     )
 
-    # ✅ Retorna em formato JSON serializável
     return fig.to_plotly_json()

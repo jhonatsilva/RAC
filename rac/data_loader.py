@@ -1,26 +1,99 @@
+import os
 import pandas as pd
-from .config import SHEET_NAME_BY_YEAR
 
-def load_excel_for_year(filepath: str, year: int) -> pd.DataFrame:
-    """Carrega os dados do ano selecionado e normaliza nomes das colunas."""
-    if year not in SHEET_NAME_BY_YEAR:
-        raise ValueError(f"Ano {year} não configurado.")
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DEFAULT_XLSX = os.path.join(BASE_DIR, "uploads", "Dados_2024-2025 v3.xlsx")
 
-    df = pd.read_excel(filepath, sheet_name=SHEET_NAME_BY_YEAR[year])
 
-    # Normaliza nomes das colunas
-    df.columns = [c.strip().upper() for c in df.columns]
+def _detect_col(df, *keywords):
+    """
+    Encontra a primeira coluna cujo nome contenha TODOS os trechos em keywords.
+    Ex: _detect_col(df, "NATUREZA") ou ("BAIRRO",)
+    """
+    for c in df.columns:
+        name = c.upper()
+        if all(k in name for k in keywords):
+            return c
+    return None
 
-    # Garante colunas padrão que o sistema usa
-    colunas_obrigatorias = ["NATUREZA", "BAIRRO", "HORA", "DIA DA SEMANA", "AMBIENTE", "MÊS"]
-    faltando = [c for c in colunas_obrigatorias if c not in df.columns]
-    if faltando:
-        raise ValueError(f"Colunas obrigatórias ausentes: {', '.join(faltando)}")
 
-    # Limpa e padroniza textos
-    for col in ["NATUREZA", "BAIRRO", "DIA DA SEMANA", "AMBIENTE", "MÊS"]:
-        df[col] = df[col].astype(str).str.strip().str.upper()
+def get_filter_values(filepath: str = DEFAULT_XLSX):
+    """
+    Lê o arquivo padrão e retorna:
+      - years: anos únicos
+      - crimes: naturezas únicas (ordenadas)
+      - bairros: bairros únicos (ordenados)
+    Se algo der errado, devolve defaults.
+    """
+    try:
+        if not os.path.exists(filepath):
+            print(f"[WARN] Arquivo padrão não encontrado: {filepath}")
+            return [2024, 2025], [], []
 
-    df["HORA"] = pd.to_numeric(df["HORA"], errors="coerce").fillna(0).astype(int)
+        df = pd.read_excel(filepath)
+
+        col_ano = _detect_col(df, "ANO")
+        col_crime = _detect_col(df, "NATUREZA")
+        col_bairro = _detect_col(df, "BAIRRO")
+
+        # anos
+        if col_ano:
+            years = (
+                df[col_ano]
+                .dropna()
+                .astype(int)
+                .drop_duplicates()
+                .sort_values()
+                .tolist()
+            )
+        else:
+            years = [2024, 2025]
+
+        # crimes
+        if col_crime:
+            crimes = (
+                df[col_crime]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .str.upper()
+                .drop_duplicates()
+                .sort_values()
+                .tolist()
+            )
+        else:
+            crimes = []
+
+        # bairros
+        if col_bairro:
+            bairros = (
+                df[col_bairro]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .str.upper()
+                .drop_duplicates()
+                .sort_values()
+                .tolist()
+            )
+        else:
+            bairros = []
+
+        return years, crimes, bairros
+
+    except Exception as e:
+        print(f"[ERRO] get_filter_values: {e}")
+        return [2024, 2025], [], []
+
+
+def load_excel_for_year(filepath: str, year):
+    """
+    Lê o Excel informado e filtra pelo ano (se houver coluna de ano).
+    """
+    df = pd.read_excel(filepath)
+
+    col_ano = _detect_col(df, "ANO")
+    if col_ano and year:
+        df = df[df[col_ano].astype(str) == str(year)]
 
     return df

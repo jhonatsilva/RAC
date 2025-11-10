@@ -1,60 +1,49 @@
-document.addEventListener("DOMContentLoaded", () => {
-    const fileInput = document.querySelector("input[name='file']");
-    const yearSelect = document.querySelector("select[name='year']");
+window.addEventListener("load", () => {
     const analysisSelect = document.getElementById("analysis_key");
-    const paramGroups = document.querySelectorAll(".param");
+    const crimeGroup = document.querySelector(".param[data-param='crime']");
+    const bairroGroup = document.querySelector(".param[data-param='bairro']");
+    const semestreGroup = document.querySelector(".param[data-param='semestre']");
+    const periodoGroup = document.querySelector(".param[data-param='periodo']");
+    const crimeSelect = document.getElementById("crime");
+    const bairroSelect = document.getElementById("bairro");
 
-    let dataOptions = null;
+    const logic = {
+        total_por_crime: ["crime"],
+        total_por_bairro: ["bairro"],
+        crime_por_bairro: ["crime", "bairro"],
+        bairro_por_crime: ["bairro", "crime"],
+        comparativo_semestre: ["semestre"],
+        periodo_dia: ["periodo"],
+        geral: []
+    };
 
-    async function fetchOptions() {
-        if (!fileInput.files[0] || !yearSelect.value) return;
+    const allGroups = [crimeGroup, bairroGroup, semestreGroup, periodoGroup];
 
-        const formData = new FormData();
-        formData.append("file", fileInput.files[0]);
-        formData.append("year", yearSelect.value);
+    function hideAll() {
+        allGroups.forEach(el => el && el.classList.add("hidden"));
+    }
 
-        const response = await fetch("/load-options", {
-            method: "POST",
-            body: formData
+    function showForType() {
+        const type = analysisSelect.value;
+        const visible = logic[type] || [];
+        hideAll();
+
+        visible.forEach(p => {
+            const group = document.querySelector(`.param[data-param='${p}']`);
+            if (group) group.classList.remove("hidden");
         });
 
-        const data = await response.json();
-        if (data.error) {
-            alert("Erro: " + data.error);
-            return;
+        if (type === "crime_por_bairro" && !crimeSelect.value) {
+            bairroGroup.classList.add("hidden");
         }
-
-        dataOptions = data;
-        fillSelect("crime", data.crimes);
-        fillSelect("bairro", data.bairros);
-        fillSelect("semestre", data.semestres);
-        fillSelect("periodo", data.periodos);
+        if (type === "bairro_por_crime" && !bairroSelect.value) {
+            crimeGroup.classList.add("hidden");
+        }
     }
 
-    function fillSelect(paramName, values) {
-        const group = document.querySelector(`[data-param="${paramName}"]`);
-        if (!group) return;
-        const select = group.querySelector("select");
-        if (!select) return;
+    hideAll();
 
-        select.innerHTML = '<option value="">Selecione</option>';
-        values.forEach(v => {
-            const opt = document.createElement("option");
-            opt.value = v;
-            opt.textContent = v;
-            select.appendChild(opt);
-        });
-    }
-
-    analysisSelect.addEventListener("change", () => {
-        const selected = analysisSelect.options[analysisSelect.selectedIndex];
-        const params = selected.dataset.params ? selected.dataset.params.split(",") : [];
-        paramGroups.forEach(g => {
-            const name = g.getAttribute("data-param");
-            g.classList.toggle("hidden", !params.includes(name));
-        });
-    });
-
-    fileInput.addEventListener("change", fetchOptions);
-    yearSelect.addEventListener("change", fetchOptions);
+    if (analysisSelect) analysisSelect.addEventListener("change", showForType);
+    if (crimeSelect) crimeSelect.addEventListener("change", showForType);
+    if (bairroSelect) bairroSelect.addEventListener("change", showForType);
 });

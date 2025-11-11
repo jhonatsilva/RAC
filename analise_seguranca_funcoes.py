@@ -74,12 +74,48 @@ def ocorrencias_filtro_crime(df, crime):
     r.columns = ['Natureza', 'Quantidade']
     return r
 
+
 # 2) Ranking bairros por crime
 def ranking_bairros_crime(df, crime):
-    f = df[df['Natureza'] == crime]
-    q = f['Bairro'].value_counts().reset_index(name='Crimes')
+    # Garante cópia independente
+    f = df.copy()
+
+    # Normaliza nomes das colunas
+    colunas = {c.strip().lower(): c for c in df.columns}
+    if 'natureza' in colunas:
+        natureza_col = colunas['natureza']
+    else:
+        raise KeyError("Coluna 'Natureza' não encontrada no dataset.")
+
+    if 'bairro' in colunas:
+        bairro_col = colunas['bairro']
+    else:
+        raise KeyError("Coluna 'Bairro' não encontrada no dataset.")
+
+    # Filtro seguro
+    f = f[f[natureza_col] == crime]
+
+    # Remove nulos e valores inválidos
+    f = f[f[bairro_col].notna()]
+    f[bairro_col] = f[bairro_col].astype(str).str.strip()
+    f = f[~f[bairro_col].isin(["", "0", "NULL", "None"])]
+
+    # Gera ranking
+    q = f[bairro_col].value_counts().reset_index(name='Crimes')
     q.columns = ['Bairro', 'Crimes']
-    return q.head(20)
+
+    if q.empty:
+        return pd.DataFrame(columns=['Bairro', 'Crimes', 'Bloco'])
+
+    # Ordena e limita até 80 bairros
+    q = q.sort_values(by='Crimes', ascending=False).head(80).reset_index(drop=True)
+
+    # Cria coluna de blocos (4 blocos de 20 bairros)
+    q["Bloco"] = (q.index // 20) + 1
+
+    return q
+
+
 
 # 3) Crimes por dia da semana (crime + bairro)
 def crimes_dia_crime_bairro(df, crime, bairro):
@@ -178,14 +214,39 @@ def dia_moradias_bairro(df, bairro):
     r = base.groupby('Dia da Semana').size().reset_index(name='Crimes')
     return r.sort_values(by='Crimes', ascending=False)
 
+
 # 11) Período furtos/roubos por bairro
 def periodo_furtos_roubos_bairro(df, bairro):
-    f = df[(df['Bairro'] == bairro) & (df['Natureza'].isin(furtos_roubos))].copy()
-    f['Periodo'] = f['Hora'].apply(_periodo)
-    c = f.groupby(['Natureza', 'Periodo']).size().reset_index(name='Ocorrencias')
-    idx = c.groupby('Natureza')['Ocorrencias'].idxmax()
-    r = c.loc[idx].reset_index(drop=True)
-    return r.sort_values(by='Ocorrencias', ascending=False)
+    try:
+        # Filtra apenas furtos e roubos do bairro
+        f = df[(df['Bairro'] == bairro) & (df['Natureza'].isin(furtos_roubos))].copy()
+
+        # Garante que a coluna 'Hora' seja numérica (ignora strings como 'Noite', 'Dia')
+        f['Hora'] = pd.to_numeric(f['Hora'], errors='coerce')
+
+        # Remove linhas com hora nula (casos de erro de conversão)
+        f = f.dropna(subset=['Hora'])
+
+        # Converte hora para inteiro
+        f['Hora'] = f['Hora'].astype(int)
+
+        # Mapeia período
+        f['Periodo'] = f['Hora'].apply(_periodo)
+
+        # Conta ocorrências por tipo e período
+        c = f.groupby(['Natureza', 'Periodo']).size().reset_index(name='Ocorrencias')
+
+        # Seleciona o período com mais ocorrências para cada tipo de crime
+        idx = c.groupby('Natureza')['Ocorrencias'].idxmax()
+        r = c.loc[idx].reset_index(drop=True)
+
+        # Ordena
+        return r.sort_values(by='Ocorrencias', ascending=False)
+
+    except Exception as e:
+        print(f"[ERRO] Falha na função periodo_furtos_roubos_bairro: {e}")
+        return pd.DataFrame(columns=['Natureza', 'Periodo', 'Ocorrencias'])
+
 
 # 12) Dia furtos/roubos por bairro
 def dia_furtos_roubos_bairro(df, bairro):

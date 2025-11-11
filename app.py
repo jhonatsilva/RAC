@@ -11,13 +11,12 @@ DB_PATH = 'dados.db'
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-
 # =====================================================
 # 🔹 Banco de Dados Helpers
 # =====================================================
-
 def get_conn():
     return sqlite3.connect(DB_PATH)
+
 
 def init_db_from_excel(filepath):
     """Lê todas as planilhas do Excel e salva cada uma como tabela no SQLite."""
@@ -31,6 +30,7 @@ def init_db_from_excel(filepath):
             )
         """)
         conn.execute("DELETE FROM meta_sheets")
+
         for sheet in xls.sheet_names:
             df = xls.parse(sheet)
             table_name = (
@@ -45,6 +45,7 @@ def init_db_from_excel(filepath):
                 (sheet, table_name)
             )
 
+
 def get_tables():
     conn = get_conn()
     cur = conn.cursor()
@@ -57,32 +58,47 @@ def get_tables():
         conn.close()
     return rows
 
+
 def load_df(table_name):
     conn = get_conn()
-    df = pd.read_sql_query(f'SELECT * FROM "{table_name}"', conn)
+    df = pd.read_sql_query(f'SELECT * FROM \"{table_name}\"', conn)
     conn.close()
     return df
+
 
 def get_distinct(table_name, column):
     conn = get_conn()
     try:
         cur = conn.cursor()
-        cur.execute(f'SELECT DISTINCT "{column}" FROM "{table_name}" '
-                    f'WHERE "{column}" IS NOT NULL ORDER BY 1')
-        values = [r[0] for r in cur.fetchall() if r[0] not in (None, "")]
+        cur.execute(
+            f'SELECT DISTINCT \"{column}\" FROM \"{table_name}\" '
+            f'WHERE \"{column}\" IS NOT NULL ORDER BY 1'
+        )
+        values = [r[0] for r in cur.fetchall() if r[0] not in (None, "", 0)]
     except sqlite3.OperationalError:
         values = []
     finally:
         conn.close()
     return values
 
+import inspect
+
+def sanitize_json(obj):
+    """Remove objetos não serializáveis (como funções ou métodos)"""
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_json(i) for i in obj]
+    elif isinstance(obj, dict):
+        return {k: sanitize_json(v) for k, v in obj.items()}
+    elif callable(obj) or inspect.isfunction(obj) or inspect.ismethod(obj):
+        return str(obj)
+    else:
+        return obj
+
 
 # =====================================================
 # 🔹 Metadados das Funções
 # =====================================================
-
 FUNCTIONS_META = {
-    # Originais
     "ocorrencias_filtro_crime": {
         "label": "Ocorrências por Crime",
         "func": ocorrencias_filtro_crime,
@@ -158,10 +174,8 @@ FUNCTIONS_META = {
         "func": crime_comercial_bairro,
         "params": ["dataset", "bairro"],
     },
-
-    # Novas análises
     "top10_bairros_perigosos": {
-        "label": "Top 10 Bairros com ocorrências mais Perigosas",
+        "label": "Top 10 Bairros com Ocorrências Mais Perigosas",
         "func": top10_bairros_perigosos,
         "params": ["dataset"],
     },
@@ -191,15 +205,17 @@ FUNCTIONS_META = {
 # =====================================================
 # 🔹 Rotas Flask
 # =====================================================
-
 @app.route('/', methods=['GET', 'POST'])
 def upload():
     if request.method == 'POST':
         if 'file' not in request.files:
             return "Nenhum arquivo enviado", 400
+
         file = request.files['file']
+
         if file.filename == '':
             return "Nenhum arquivo selecionado", 400
+
         if not file.filename.endswith('.xlsx'):
             return "Apenas arquivos .xlsx são permitidos", 400
 
@@ -232,6 +248,9 @@ def funcao_parametros(key):
     meta = FUNCTIONS_META[key]
     default_table = tables[0][1]
 
+    # =========================
+    # GET → mostra formulário
+    # =========================
     if request.method == 'GET':
         crimes = get_distinct(default_table, 'Natureza')
         bairros = get_distinct(default_table, 'Bairro')
@@ -246,7 +265,9 @@ def funcao_parametros(key):
             result=None
         )
 
-    # POST
+    # =========================
+    # POST → processa filtros
+    # =========================
     if 'dataset' in meta['params']:
         table_name = request.form.get('dataset') or default_table
     else:
@@ -268,13 +289,64 @@ def funcao_parametros(key):
     func = meta['func']
     result = func(df, **{k: v for k, v in params.items() if v})
 
-    # Normaliza para gráfico
-    if isinstance(result, pd.Series):
-        result = result.reset_index()
+    # =====================================================
+    # 🔹 Ranking de Bairros por Crime → múltiplos gráficos
+    #     Esperoa DataFrame com colunas: Bairro, Crimes, Bloco
+    # =====================================================
+    if key == "ranking_bairros_crime" and isinstance(result, pd.DataFrame) and "Bloco" in result.columns:
+        blocos = []
+        result = result.copy()
+
+        result["Bairro"] = result["Bairro"].astype(str).replace(["None", "nan", "0", ""], pd.NA)
+        result["Crimes"] = pd.to_numeric(result["Crimes"], errors="coerce").fillna(0)
+        result = result.dropna(subset=["Bairro"])
+        result = result[result["Crimes"] > 0]
+
+        for bloco_id, bloco_df in result.groupby("Bloco"):
+            labels = bloco_df["Bairro"].tolist()    # ✅ note os ()
+            values = bloco_df["Crimes"].astype(float).tolist() # ✅ note os ()
+            blocos.append({
+                "labels": labels,
+                "data": values,  # <-- CORRIGIDO (era "values")
+                "titulo": f"Bloco {int(bloco_id)}"
+            })
+
+        result_table = result[["Bairro", "Crimes", "Bloco"]].to_html(
+            classes="table table-sm table-striped",
+            index=False
+        )
+
+        return render_template(
+            "grafico.html",
+            stage="chart_multi",
+            meta=meta,
+            blocos=blocos,
+            result_table=result_table
+        )
+
+
+    # =====================================================
+    # 🔹 Caso normal: um gráfico
+    # =====================================================
     if isinstance(result, pd.DataFrame):
         labels = result.iloc[:, 0].astype(str).tolist()
-        values = result.iloc[:, 1].astype(float).tolist()
-        result_table = result.to_html(classes='table table-sm table-striped', index=False)
+
+        numeric_cols = result.select_dtypes(include=['number']).columns
+        if len(numeric_cols) > 0:
+            values = result[numeric_cols[0]].astype(float).tolist()
+        else:
+            try:
+                values = pd.to_numeric(
+                    result.iloc[:, -1],
+                    errors='coerce'
+                ).fillna(0).tolist()
+            except Exception:
+                values = [0] * len(result)
+
+        result_table = result.to_html(
+            classes='table table-sm table-striped',
+            index=False
+        )
     else:
         labels, values, result_table = [], [], None
 

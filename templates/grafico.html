@@ -101,119 +101,143 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
 
+<style>
+  canvas {
+    max-height: 600px !important;
+  }
+</style>
+
 <script>
   document.addEventListener("DOMContentLoaded", () => {
     console.log("✅ DOM carregado — iniciando renderização de gráficos...");
 
+    // Armazena instâncias globais de gráficos para evitar sobreposição
+    if (window.chartInstances === undefined) window.chartInstances = {};
+
+    // ===============================
+    // 🔹 Gráfico único (chart)
+    // ===============================
     {% if stage == 'chart' %}
     const canvas = document.getElementById('chartCanvas');
     if (!canvas) return console.error("❌ Canvas principal não encontrado!");
 
     const ctx = canvas.getContext('2d');
-    const labels = {{ labels | tojson | safe
-  }};
-  const values = {{ values | tojson | safe }};
-  const metaLabel = "{{ meta.label }}";
+    const labels = {{ labels | tojson | safe }};
+    const values = {{ values | tojson | safe }};
+    const metaLabel = "{{ meta.label }}";
 
-  console.log("📊 Dados (chart único):", labels.slice(0, 5), values.slice(0, 5));
-  const numericValues = (values || []).map(v => Number(v) || 0);
+    console.log("📊 Dados (chart único):", labels.slice(0, 5), values.slice(0, 5));
+    const numericValues = (values || []).map(v => Number(v) || 0);
 
-  const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-  gradient.addColorStop(0, 'rgba(88,166,255,0.8)');
-  gradient.addColorStop(1, 'rgba(0,90,255,0.4)');
+    // 🔹 Destrói gráfico anterior, se existir
+    if (window.chartInstances[canvas.id]) {
+      window.chartInstances[canvas.id].destroy();
+    }
 
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: metaLabel,
-        data: numericValues,
-        backgroundColor: gradient,
-        borderColor: '#2ea043',
-        borderWidth: 1
-      }]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      plugins: {
-        legend: { labels: { color: '#e6edf3' } },
-        tooltip: { callbacks: { label: ctx => ctx.parsed.y.toLocaleString('pt-BR') } },
-        datalabels: {
-          color: '#fff',
-          anchor: 'end',
-          align: 'start',
-          font: { weight: 'bold', size: 10 },
-          formatter: value => value.toLocaleString('pt-BR')
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(88,166,255,0.8)');
+    gradient.addColorStop(1, 'rgba(0,90,255,0.4)');
+
+    // 🔹 Cria novo gráfico
+    window.chartInstances[canvas.id] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: metaLabel,
+          data: numericValues,
+          backgroundColor: gradient,
+          borderColor: '#2ea043',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#e6edf3' } },
+          tooltip: { callbacks: { label: ctx => ctx.parsed.y.toLocaleString('pt-BR') } },
+          datalabels: {
+            color: '#fff',
+            anchor: 'end',
+            align: 'start',
+            font: { weight: 'bold', size: 10 },
+            formatter: value => value.toLocaleString('pt-BR')
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, ticks: { color: '#e6edf3' }, grid: { color: '#30363d' } },
+          x: { ticks: { color: '#e6edf3', maxRotation: 45, minRotation: 45 }, grid: { color: '#30363d' } }
         }
       },
-      scales: {
-        y: { beginAtZero: true, ticks: { color: '#e6edf3' }, grid: { color: '#30363d' } },
-        x: { ticks: { color: '#e6edf3', maxRotation: 45, minRotation: 45 }, grid: { color: '#30363d' } }
+      plugins: [ChartDataLabels]
+    });
+    {% endif %}
+
+    // ===============================
+    // 🔹 Gráficos múltiplos (chart_multi)
+    // ===============================
+    {% if stage == 'chart_multi' %}
+    {% for bloco in blocos %}
+    (function () {
+      const canvasId = 'chartCanvas{{ loop.index }}';
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return console.warn(`⚠️ Canvas '${canvasId}' não encontrado.`);
+
+      const ctx = canvas.getContext('2d');
+      const labels = {{ bloco.labels | tojson | safe }};
+      const values = {{ bloco.data | tojson | safe }};
+      const titulo = "{{ meta.label }} - {{ bloco.titulo }}";
+      const numericValues = (values || []).map(v => Number(v) || 0);
+
+      // 🔹 Destrói gráfico anterior, se existir
+      if (window.chartInstances[canvas.id]) {
+        window.chartInstances[canvas.id].destroy();
       }
-    },
-    plugins: [ChartDataLabels]
+
+      const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+      gradient.addColorStop(0, 'rgba(255, 159, 64, 0.7)');
+      gradient.addColorStop(1, 'rgba(255, 99, 132, 0.5)');
+
+      // 🔹 Cria novo gráfico
+      window.chartInstances[canvas.id] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: titulo,
+            data: numericValues,
+            backgroundColor: gradient,
+            borderColor: '#2ea043',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          animation: false,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#e6edf3' } },
+            tooltip: { callbacks: { label: ctx => ctx.parsed.y.toLocaleString('pt-BR') } },
+            datalabels: {
+              color: '#fff',
+              anchor: 'end',
+              align: 'start',
+              font: { weight: 'bold', size: 9 },
+              formatter: value => value.toLocaleString('pt-BR')
+            }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { color: '#e6edf3' }, grid: { color: '#30363d' } },
+            x: { ticks: { color: '#e6edf3', autoSkip: false, maxRotation: 45, minRotation: 45 }, grid: { color: '#30363d' } }
+          }
+        },
+        plugins: [ChartDataLabels]
+      });
+    })();
+    {% endfor %}
+    {% endif %}
   });
-  {% endif %}
-
-  {% if stage == 'chart_multi' %}
-  {% for bloco in blocos %}
-  (function () {
-    const canvasId = 'chartCanvas{{ loop.index }}';
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return console.warn(`⚠️ Canvas '${canvasId}' não encontrado.`);
-
-    const ctx = canvas.getContext('2d');
-    const labels = {{ bloco.labels | tojson | safe
-  }};
-  /* --- CORRIGIDO --- */
-  const values = {{ bloco.data | tojson | safe }}; /* Era bloco.values */
-  const titulo = "{{ meta.label }} - {{ bloco.titulo }}";
-
-  const numericValues = (values || []).map(v => Number(v) || 0);
-
-  const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-  gradient.addColorStop(0, 'rgba(255, 159, 64, 0.7)');
-  gradient.addColorStop(1, 'rgba(255, 99, 132, 0.5)');
-
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: titulo,
-        data: numericValues,
-        backgroundColor: gradient,
-        borderColor: '#2ea043',
-        borderWidth: 1
-      }]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: '#e6edf3' } },
-        tooltip: { callbacks: { label: ctx => ctx.parsed.y.toLocaleString('pt-BR') } },
-        datalabels: {
-          color: '#fff',
-          anchor: 'end',
-          align: 'start',
-          font: { weight: 'bold', size: 9 },
-          formatter: value => value.toLocaleString('pt-BR')
-        }
-      },
-      scales: {
-        y: { beginAtZero: true, ticks: { color: '#e6edf3' }, grid: { color: '#30363d' } },
-        x: { ticks: { color: '#e6edf3', autoSkip: false, maxRotation: 45, minRotation: 45 }, grid: { color: '#30363d' } }
-      }
-    },
-    plugins: [ChartDataLabels]
-  });
-  }) ();
-  {% endfor %}
-  {% endif %}
-});
 </script>
 {% endblock %}

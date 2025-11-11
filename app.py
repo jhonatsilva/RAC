@@ -1,108 +1,296 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash
-from werkzeug.utils import secure_filename
+import sqlite3
+import pandas as pd
+from flask import Flask, render_template, request, redirect, url_for, abort
 
-from rac.data_loader import get_filter_values, load_excel_for_year
-from rac.analysis_functions import run_analysis
-from rac.charts import build_chart
-from rac.choices import ANALYSIS_OPTIONS
-
-# ==============================
-# Configuração básica
-# ==============================
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-ALLOWED_EXTENSIONS = {"xlsx"}
+from analise_seguranca_funcoes import *
 
 app = Flask(__name__)
-app.secret_key = "segredo_rac_pmpr"
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config['UPLOAD_FOLDER'] = 'uploads'
+DB_PATH = 'dados.db'
+
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 
-def allowed_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+# =====================================================
+# 🔹 Banco de Dados Helpers
+# =====================================================
+
+def get_conn():
+    return sqlite3.connect(DB_PATH)
+
+def init_db_from_excel(filepath):
+    """Lê todas as planilhas do Excel e salva cada uma como tabela no SQLite."""
+    xls = pd.ExcelFile(filepath)
+    conn = get_conn()
+    with conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_sheets (
+                sheet_name TEXT PRIMARY KEY,
+                table_name TEXT NOT NULL
+            )
+        """)
+        conn.execute("DELETE FROM meta_sheets")
+        for sheet in xls.sheet_names:
+            df = xls.parse(sheet)
+            table_name = (
+                sheet.strip().lower()
+                    .replace(" ", "_")
+                    .replace("-", "_")
+                    .replace("/", "_")
+            )
+            df.to_sql(table_name, conn, if_exists='replace', index=False)
+            conn.execute(
+                "INSERT INTO meta_sheets (sheet_name, table_name) VALUES (?, ?)",
+                (sheet, table_name)
+            )
+
+def get_tables():
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT sheet_name, table_name FROM meta_sheets ORDER BY sheet_name")
+        rows = cur.fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    finally:
+        conn.close()
+    return rows
+
+def load_df(table_name):
+    conn = get_conn()
+    df = pd.read_sql_query(f'SELECT * FROM "{table_name}"', conn)
+    conn.close()
+    return df
+
+def get_distinct(table_name, column):
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(f'SELECT DISTINCT "{column}" FROM "{table_name}" '
+                    f'WHERE "{column}" IS NOT NULL ORDER BY 1')
+        values = [r[0] for r in cur.fetchall() if r[0] not in (None, "")]
+    except sqlite3.OperationalError:
+        values = []
+    finally:
+        conn.close()
+    return values
 
 
-# ==============================
-# Rota inicial
-# ==============================
-@app.route("/", methods=["GET"])
-def index():
-    years, crimes, bairros = get_filter_values()
+# =====================================================
+# 🔹 Metadados das Funções
+# =====================================================
+
+FUNCTIONS_META = {
+    # Originais
+    "ocorrencias_filtro_crime": {
+        "label": "Ocorrências por Crime",
+        "func": ocorrencias_filtro_crime,
+        "params": ["dataset", "crime"],
+    },
+    "ranking_bairros_crime": {
+        "label": "Ranking de Bairros por Crime",
+        "func": ranking_bairros_crime,
+        "params": ["dataset", "crime"],
+    },
+    "crimes_dia_crime_bairro": {
+        "label": "Crimes por Dia da Semana (Crime + Bairro)",
+        "func": crimes_dia_crime_bairro,
+        "params": ["dataset", "crime", "bairro"],
+    },
+    "periodo_crime_bairro_crime": {
+        "label": "Período do Crime (Crime + Bairro)",
+        "func": periodo_crime_bairro_crime,
+        "params": ["dataset", "crime", "bairro"],
+    },
+    "crimes_perigosos_semestre": {
+        "label": "Crimes Perigosos por Semestre",
+        "func": crimes_perigosos_semestre,
+        "params": ["dataset", "semestre"],
+    },
+    "crimes_moradias_semestre": {
+        "label": "Crimes em Moradias por Semestre",
+        "func": crimes_moradias_semestre,
+        "params": ["dataset", "semestre"],
+    },
+    "crimes_bairro": {
+        "label": "Crimes Perigosos por Bairro",
+        "func": crimes_bairro,
+        "params": ["dataset", "bairro"],
+    },
+    "crimes_moradias_bairro": {
+        "label": "Crimes em Moradias por Bairro",
+        "func": crimes_moradias_bairro,
+        "params": ["dataset", "bairro"],
+    },
+    "periodo_moradias_bairro": {
+        "label": "Período Crimes em Moradias por Bairro",
+        "func": periodo_moradias_bairro,
+        "params": ["dataset", "bairro"],
+    },
+    "dia_moradias_bairro": {
+        "label": "Dia da Semana Crimes em Moradias por Bairro",
+        "func": dia_moradias_bairro,
+        "params": ["dataset", "bairro"],
+    },
+    "periodo_furtos_roubos_bairro": {
+        "label": "Período Furtos/Roubos por Bairro",
+        "func": periodo_furtos_roubos_bairro,
+        "params": ["dataset", "bairro"],
+    },
+    "dia_furtos_roubos_bairro": {
+        "label": "Dia Furtos/Roubos por Bairro",
+        "func": dia_furtos_roubos_bairro,
+        "params": ["dataset", "bairro"],
+    },
+    "periodo_crime_bairro": {
+        "label": "Principal Período por Crime (Bairro)",
+        "func": periodo_crime_bairro,
+        "params": ["dataset", "bairro"],
+    },
+    "crimes_perigosos_bairro_periodo": {
+        "label": "Crimes Perigosos (Bairro + Período)",
+        "func": crimes_perigosos_bairro_periodo,
+        "params": ["dataset", "bairro", "periodo"],
+    },
+    "crime_comercial_bairro": {
+        "label": "Crimes em Comércio em Horário Comercial (Bairro)",
+        "func": crime_comercial_bairro,
+        "params": ["dataset", "bairro"],
+    },
+
+    # Novas análises
+    "top10_bairros_perigosos": {
+        "label": "Top 10 Bairros com ocorrências mais Perigosas",
+        "func": top10_bairros_perigosos,
+        "params": ["dataset"],
+    },
+    "bairros_por_crime_periodo": {
+        "label": "Bairros por Crime e Período",
+        "func": bairros_por_crime_periodo,
+        "params": ["dataset", "crime", "periodo"],
+    },
+    "evolucao_crimes_perigosos": {
+        "label": "Evolução Mensal de Crimes Perigosos",
+        "func": evolucao_crimes_perigosos,
+        "params": ["dataset"],
+    },
+    "ranking_geral_crimes": {
+        "label": "Top 10 Crimes Mais Comuns",
+        "func": ranking_geral_crimes,
+        "params": ["dataset"],
+    },
+    "crimes_por_ambiente": {
+        "label": "Crimes por Tipo de Ambiente",
+        "func": crimes_por_ambiente,
+        "params": ["dataset"],
+    },
+}
+
+
+# =====================================================
+# 🔹 Rotas Flask
+# =====================================================
+
+@app.route('/', methods=['GET', 'POST'])
+def upload():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return "Nenhum arquivo enviado", 400
+        file = request.files['file']
+        if file.filename == '':
+            return "Nenhum arquivo selecionado", 400
+        if not file.filename.endswith('.xlsx'):
+            return "Apenas arquivos .xlsx são permitidos", 400
+
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filepath)
+        init_db_from_excel(filepath)
+        return redirect(url_for('funcoes'))
+
+    tables = get_tables()
+    return render_template('upload.html', tables=tables)
+
+
+@app.route('/funcoes')
+def funcoes():
+    tables = get_tables()
+    if not tables:
+        return redirect(url_for('upload'))
+    return render_template('funcoes.html', funcoes=FUNCTIONS_META, tables=tables)
+
+
+@app.route('/funcoes/<key>', methods=['GET', 'POST'])
+def funcao_parametros(key):
+    if key not in FUNCTIONS_META:
+        abort(404)
+
+    tables = get_tables()
+    if not tables:
+        return redirect(url_for('upload'))
+
+    meta = FUNCTIONS_META[key]
+    default_table = tables[0][1]
+
+    if request.method == 'GET':
+        crimes = get_distinct(default_table, 'Natureza')
+        bairros = get_distinct(default_table, 'Bairro')
+        return render_template(
+            'grafico.html',
+            stage='form',
+            func_key=key,
+            meta=meta,
+            tables=tables,
+            crimes=crimes,
+            bairros=bairros,
+            result=None
+        )
+
+    # POST
+    if 'dataset' in meta['params']:
+        table_name = request.form.get('dataset') or default_table
+    else:
+        table_name = default_table
+
+    df = load_df(table_name)
+
+    params = {}
+    if 'crime' in meta['params']:
+        params['crime'] = request.form.get('crime')
+    if 'bairro' in meta['params']:
+        params['bairro'] = request.form.get('bairro')
+    if 'semestre' in meta['params']:
+        semestre = request.form.get('semestre') or "1"
+        params['semestre'] = int(semestre)
+    if 'periodo' in meta['params']:
+        params['periodo'] = request.form.get('periodo')
+
+    func = meta['func']
+    result = func(df, **{k: v for k, v in params.items() if v})
+
+    # Normaliza para gráfico
+    if isinstance(result, pd.Series):
+        result = result.reset_index()
+    if isinstance(result, pd.DataFrame):
+        labels = result.iloc[:, 0].astype(str).tolist()
+        values = result.iloc[:, 1].astype(float).tolist()
+        result_table = result.to_html(classes='table table-sm table-striped', index=False)
+    else:
+        labels, values, result_table = [], [], None
+
     return render_template(
-        "index.html",
-        years=years,
-        crimes=crimes,
-        bairros=bairros,
-        analysis_options=ANALYSIS_OPTIONS,
-        error=None,
+        'grafico.html',
+        stage='chart',
+        func_key=key,
+        meta=meta,
+        tables=tables,
+        params=params,
+        labels=labels,
+        values=values,
+        table_name=table_name,
+        result_table=result_table
     )
 
 
-# ==============================
-# Rota de análise
-# ==============================
-@app.route("/analyze", methods=["POST"])
-def analyze():
-    try:
-        file = request.files.get("file")
-        year = request.form.get("year")
-        analysis_key = request.form.get("analysis_key")
-
-        crime = (request.form.get("crime") or "").strip() or None
-        bairro = (request.form.get("bairro") or "").strip() or None
-        semestre = (request.form.get("semestre") or "").strip() or None
-        periodo = (request.form.get("periodo") or "").strip() or None
-
-        # Validações básicas
-        if not file or file.filename == "":
-            flash("Envie um arquivo .xlsx válido.")
-            return redirect(url_for("index"))
-
-        if not allowed_file(file.filename):
-            flash("Formato inválido. Envie um arquivo .xlsx.")
-            return redirect(url_for("index"))
-
-        if not year:
-            flash("Selecione o ano.")
-            return redirect(url_for("index"))
-
-        if not analysis_key or analysis_key not in ANALYSIS_OPTIONS:
-            flash("Selecione um tipo de análise válido.")
-            return redirect(url_for("index"))
-
-        # Salvar arquivo
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        file.save(filepath)
-
-        # Carregar base filtrada por ano
-        df = load_excel_for_year(filepath, year)
-        if df is None or df.empty:
-            raise ValueError("Nenhum dado encontrado para o ano selecionado.")
-
-        # Rodar análise
-        result_df, meta = run_analysis(
-            analysis_key=analysis_key,
-            df=df,
-            crime=crime,
-            bairro=bairro,
-            semestre=semestre,
-            periodo=periodo,
-        )
-
-        # Gerar gráfico
-        chart_data = build_chart(result_df, meta)
-
-        return render_template("result.html", chart_data=chart_data, meta=meta)
-
-    except Exception as e:
-        print(f"[ERRO] /analyze: {e}")
-        flash(f"Erro ao gerar análise: {e}")
-        return redirect(url_for("index"))
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
